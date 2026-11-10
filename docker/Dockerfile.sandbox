@@ -1,0 +1,34 @@
+# Sandbox image for BOTH Python validation runs and Rust compile/run.
+# Build from the repository root:
+#   docker build -f docker/Dockerfile.sandbox -t converter-sandbox:latest .
+#
+# The image fetches Rust dependencies once at build time. Runtime containers
+# run with no network and an offline cargo cache, so builds never reach out.
+FROM rust:1-slim
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python3 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Populate an immutable cargo cache used by the runtime entrypoint.
+ENV CARGO_HOME=/opt/cargo-cache
+
+WORKDIR /opt/prefetch
+COPY src/converter/sandbox/rust_harness/Cargo.toml ./Cargo.toml
+COPY src/converter/sandbox/rust_harness/Cargo.lock ./Cargo.lock
+RUN mkdir -p src \
+    && printf 'fn main() {}\n' > src/main.rs \
+    && cargo fetch \
+    && rm -rf /opt/prefetch
+
+COPY docker/sandbox-entrypoint.sh /usr/local/bin/sandbox-entrypoint
+RUN chmod 0755 /usr/local/bin/sandbox-entrypoint
+
+# Runtime containers get a writable tmpfs at /tmp (see sandbox/executor.py).
+ENV CARGO_HOME=/tmp/cargo \
+    HOME=/tmp \
+    CARGO_NET_OFFLINE=true
+
+WORKDIR /workdir
+ENTRYPOINT ["/usr/local/bin/sandbox-entrypoint"]
+CMD ["bash"]
