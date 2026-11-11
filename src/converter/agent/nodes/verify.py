@@ -1,18 +1,18 @@
-"""Differential verification: baseline outcomes vs Rust outcomes."""
+"""Differential verification: baseline outcomes vs C outcomes."""
 
 from __future__ import annotations
 
 from ...core.errors import ConverterError
-from ...sandbox.rust_runner import run_cases
-from ...verification.differ import rust_actual_from_raw
+from ...sandbox.c_runner import run_cases
+from ...verification.differ import actual_from_raw
 from ...verification.scoring import evaluate_pass_criteria, score_results
 from ..services import Services
 from ..state import ConverterState, Diagnostic
 
 
 def verify_node(state: ConverterState, services: Services) -> dict:
-    if not state.rust_workdir:
-        raise ConverterError("verify requested without a compiled Rust build")
+    if not state.workdir:
+        raise ConverterError("verify requested without a compiled C build")
 
     cases = [
         {
@@ -25,12 +25,12 @@ def verify_node(state: ConverterState, services: Services) -> dict:
     ]
     raw = run_cases(
         services.executor,
-        workdir=state.rust_workdir,
+        workdir=state.workdir,
         cases=cases,
         timeout_s=services.settings.run_timeout_s,
     )
     actuals = {
-        test_id: rust_actual_from_raw(outcome) for test_id, outcome in raw.items()
+        test_id: actual_from_raw(outcome) for test_id, outcome in raw.items()
     }
 
     summary = score_results(state.baseline, actuals)
@@ -50,7 +50,7 @@ def verify_node(state: ConverterState, services: Services) -> dict:
     )
 
     return {
-        "rust_results": actuals,
+        "translated_results": actuals,
         "score": summary,
         "failures": summary.failures,
         "pass_failures": reasons,

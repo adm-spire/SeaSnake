@@ -1,4 +1,4 @@
-"""Isolated execution for untrusted Python and Rust code."""
+"""Isolated execution for untrusted Python and C code."""
 
 from .executor import (
     DockerSandboxExecutor,

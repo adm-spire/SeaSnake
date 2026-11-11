@@ -1,8 +1,8 @@
-# Project Status — Agentic Python-to-Rust Converter
+# Project Status — Agentic Python-to-C Converter
 
-Last updated: 2026-11-09
-Phase: **Phase 1 complete + deep-agent translator** (implementation, tests,
-Docker sandbox, README, LangChain deep agent)
+Last updated: 2026-11-11
+Phase: **Phase 1 complete + deep-agent translator + React frontend**, retargeted
+from Rust to C (implementation, tests, Docker sandbox, docs, VS Code-style UI)
 
 Use this file as the resume point for the next session. It records what exists,
 what was verified, the design decisions that must not be undone accidentally,
@@ -19,11 +19,11 @@ These were explicitly chosen and are now implemented:
 | Package layout | `src/` layout (`src/converter/...`) |
 | Sandbox | Docker-first, subprocess fallback when Docker is unavailable |
 | User test ingestion | Constrained Python AST parser (not executing pytest) |
-| Rust harness | Fixed converter-owned harness; LLM writes only `src/user_code.rs` |
+| C harness | Fixed converter-owned harness; LLM writes only `src/user_code.c` |
 | State model | Pydantic `ConverterState` inside LangGraph `StateGraph` |
 | LLM provider | OpenAI-compatible client, DeepSeek defaults |
 | Translator | LangChain **deep agent** for translate/repair by default; single-shot prompters retained behind `DEEP_AGENT_ENABLED=false` |
-| Deep-agent tool boundary | `FilesystemBackend` rooted at the temp crate; agent writes only `src/user_code.rs`; cargo/run go through `SandboxExecutor` |
+| Deep-agent tool boundary | `FilesystemBackend` rooted at the temp C project; agent writes only `src/user_code.c`; make/run go through `SandboxExecutor` |
 | Deep-agent certification | Outer graph always recompiles/re-verifies the agent's file; the agent never certifies itself |
 | Tracing | Optional local MLflow; no hosting/account; no-op if disabled |
 
@@ -37,51 +37,34 @@ Run from the project root:
 .venv/bin/pytest -q
 .venv/bin/ruff check src tests
 .venv/bin/mypy src
+cd frontend && npm run build
 ```
 
-Last results:
+Last results (after the C retarget):
 
 - `pytest`: **57 passed**
 - `ruff`: clean
 - `mypy`: clean (63 source files)
-- Docker image `converter-sandbox:latest`: **built and present**
-- Wheel packaging: verified that `rust_harness/src/*.rs`, `Cargo.lock`,
-  `rust_prelude.rs`, and eval programs are included
+- `npm run build` (`frontend/`): clean Vite production build
+- C harness: compiled with the host `cc`; JSON value/error/crash outcomes verified
+- Subprocess executor end-to-end: real `make` build + differential run passed for
+  value, error, and integer-overflow cases
+- Wheel packaging: `c_harness/src/*.c`, `c_harness/src/*.h`,
+  `c_harness/Makefile`, and `c_prelude.h` are included
+- Docker: `docker/Dockerfile.sandbox` uses Alpine 3.20
+  (`gcc`, `musl-dev`, `make`, `python3`); `converter-sandbox:latest` is rebuilt
+  at **284 MB** (down from 1.33 GB) and C build/run plus Python were verified
+  through `DockerSandboxExecutor`
 
-Manual and live end-to-end checks already performed:
+Earlier checks (performed before the C retarget; re-run on C when convenient):
 
-- Docker sandbox: Python validation works; Rust build/run works.
-- Subprocess fallback: Python validation works; offline Rust build/run works
-  after dependencies were fetched on this machine.
-- Fake-LLM graph run: generate → validate → translate → compile → verify passed.
-- Fake-LLM repair run: bad translation → verification failure → repair → passed
-  at attempt 1.
-- User-test path: stale user test reported as invalid and excluded; run passed.
-- Augment path: user tests + generated edge test; run passed.
-- **Live DeepSeek API call:** success (key loaded from `.env`, `deepseek-chat`
-  endpoint reachable).
-- **Live user-test conversion** (`add`, 3 tests): passed, compile ok, 3/3,
-  0 repairs, 1 LLM call.
-- **Live generated-test conversion** (`safe_divide`, 12 tests incl. error):
-  passed, compile ok, 12/12, 0 repairs, 1 generation round, 2 LLM calls.
-- **FastAPI `POST /convert`:** HTTP 200, status `passed`, correct report.
-- **MLflow tracing:** traces persisted to `sqlite:///mlflow.db`; all node span
-  names present (`ingest_tests`, `generate_tests`, `validate_tests`,
-  `capture_baseline`, `translate`, `compile`, `verify`, `report`).
-- **Eval CLI** (`strings`, `validators`): 2/2 passed, compile rate 1.0,
-  overall match 1.0, 0 repairs. The only invalid user test is the intentional
-  stale test in `strings_tests.py`.
-- **Deep-agent integration (scripted model, no network):** the agent wrote
-  `/src/user_code.rs` through the filesystem backend, then `run_deep_agent`
-  read it back, validated `fn dispatch`, and cleaned up the temp workdir.
-- **Deep-agent usage accounting:** a scripted two-call run recorded
-  `llm_calls=2` with prompt/completion tokens into `UsageTracker` through the
-  LangChain callback handler.
-- **Deep-agent dependency build:** `create_deep_agent` accepted the
-  `FilesystemBackend`, custom tools, and a `ChatOpenAI`-style model; path
-  traversal is rejected and absolute-looking paths stay inside the temp crate.
-- **Not yet done:** a live provider end-to-end run through the deep-agent path
-  (see Known gaps).
+- Fake-LLM graph run: generate -> validate -> translate -> compile -> verify passed.
+- Fake-LLM repair run: bad translation -> verification failure -> repair -> passed.
+- User-test path, augment path, `POST /convert`, MLflow tracing, and the eval CLI.
+- Live DeepSeek API calls succeeded (key loaded from `.env`, `deepseek-chat`).
+- Deep-agent integration with a scripted model wrote `src/user_code.c`, ran
+  `build_c`/`run_differential`, and cleaned up the workdir.
+- A live provider end-to-end run through the deep-agent path is still outstanding.
 
 Eval fixture bugs were found and fixed during live verification: three
 `count_vowels` expectations were wrong (non-ASCII `é` is not counted by the
@@ -120,23 +103,22 @@ src/converter/
 │   ├── baseline.py         # confirmed input -> outcome snapshot
 │   └── coverage.py         # heuristic regeneration gaps
 ├── errors_map/
-│   ├── mapping.py          # single Python-exception -> Rust-variant source of truth
-│   └── rust_prelude.rs     # injected ConvError enum + methods
+│   ├── mapping.py          # single Python-exception -> C-variant source of truth
+│   └── c_prelude.h         # injected ConvErrorKind enum
 ├── sandbox/
 │   ├── executor.py         # Docker executor + subprocess fallback
 │   ├── python_runner.py    # sandboxed Python validation batch
-│   ├── rust_runner.py      # cargo build + differential run; prepare_workdir
+│   ├── c_runner.py         # make build + differential run; prepare_workdir
 │   │                       #   and build_existing support the deep agent
-│   └── rust_harness/
-│       ├── Cargo.toml
-│       ├── Cargo.lock
-│       └── src/{main.rs,harness.rs}
+│   └── c_harness/
+│       ├── Makefile
+│       └── src/{main.c,harness.c,harness.h,user_code.h}
 ├── translation/
 │   ├── prompts.py          # translate + repair prompts
 │   └── translator.py       # LLM-facing translate/repair + code validation
 ├── verification/
-│   ├── models.py           # RustActual, MatchResult, FailureCase
-│   ├── differ.py           # value/error/panic comparison
+│   ├── models.py           # ActualOutcome, MatchResult, FailureCase
+│   ├── differ.py           # value/error/crash comparison
 │   └── scoring.py          # category scoring + PassCriteria
 ├── observability/tracing.py
 ├── evals/
@@ -159,7 +141,8 @@ src/converter/
 Other files:
 
 - `pyproject.toml`, `.env.example`, `.gitignore`, `README.md`, `STATUS.md`
-- `docker/Dockerfile.sandbox`, `docker/sandbox-entrypoint.sh`
+- `docker/Dockerfile.sandbox`
+- `frontend/` (Vite + React + Monaco UI)
 - `tests/` (57 tests)
 - `agents.md` (original requirements)
 
@@ -177,7 +160,7 @@ Other files:
 - [x] Regeneration loop capped by `max_generation_rounds`.
 - [x] Augment mode: user tests + generated gap fillers.
 - [x] Baseline capture with category + source tags.
-- [x] Translation to Rust.
+- [x] Translation to C.
 - [x] Sandboxed compile.
 - [x] Differential verification with value and error outcomes.
 - [x] Repair loop on compile errors and mismatches, capped by `max_attempts`.
@@ -185,18 +168,18 @@ Other files:
       tools; enabled by default with a single-shot fallback.
 - [x] Configurable pass criteria (overall + per category).
 - [x] Final report with per-category rates, source breakdown, invalid user tests,
-      repair iterations, final Rust code, usage/cost/latency.
+      repair iterations, final C code, usage/cost/latency.
 
 ### Architecture
 
 - [x] `agent/` LangGraph state machine with cycles and test-mode branch.
 - [x] `testing/` normalized model, AST ingestion, generation, validation, baseline.
 - [x] `errors_map/` single source of truth used by prompt and verifier.
-- [x] `sandbox/` Docker-first untrusted execution for Python and Rust.
+- [x] `sandbox/` Docker-first untrusted execution for Python and C.
 - [x] `translation/` translate + repair prompts with structured feedback,
       including the deep-agent system/task prompts.
 - [x] `agent/deepagent.py` LangChain deep agent for translate/repair: sandboxed
-      filesystem backend, `build_rust`/`run_differential` tools, DeepSeek
+      filesystem backend, `build_c`/`run_differential` tools, DeepSeek
       `ChatOpenAI` bridge, and callback-based usage accounting.
 - [x] `verification/` differential comparison and scoring.
 - [x] `observability/` local MLflow tracing wrapper (Langfuse replaced by
@@ -222,7 +205,7 @@ Other files:
 {"test_id":"t4","kind":"unsupported","message":"..."}
 ```
 
-### Rust harness input/output
+### C harness input/output
 
 Input cases:
 
@@ -230,47 +213,46 @@ Input cases:
 {"test_id":"t1","function":"add","args":[1,2],"kwargs":{}}
 ```
 
-Rust output rows:
+C output rows:
 
 ```json
 {"test_id":"t1","kind":"value","value":3}
 {"test_id":"t2","kind":"error","error_variant":"ValueError","message":"..."}
-{"test_id":"t3","kind":"panic"}
+{"test_id":"t3","kind":"crash"}
 ```
 
-### LLM Rust entry point
+### LLM C entry point
 
-The LLM must provide `src/user_code.rs` containing:
+The LLM must provide `src/user_code.c` containing:
 
-```rust
-pub fn dispatch(
-    case: &crate::harness::Case,
-) -> Result<serde_json::Value, crate::error_prelude::ConvError>
+```c
+ConvResult dispatch(const Case *test_case);
 ```
 
-Helpers available: `arg`, `opt_arg`, `req_arg`, `opt_named_arg`, `kwarg`,
-`opt_kwarg`, `ensure_kwargs`, `json`.
+Helpers available: `arg_int`, `arg_double`, `arg_bool`, `arg_string`,
+`arg_value`, `ensure_kwargs`, the `value_*` constructors/accessors, and
+`conv_ok` / `conv_error` / `conv_other` / `conv_fail`.
 
 ### Error mapping
 
-Python exception names map to same-named `ConvError` variants. MRO fallback is
-used for subclasses. Unknown exceptions map to
-`ConvError::Other { python_type, message }`. Panics always fail, even when an
+Python exception names map to same-named C variants (`CONV_VALUE_ERROR`,
+`CONV_TYPE_ERROR`, ...). MRO fallback is used for subclasses. Unknown exceptions
+map to `CONV_OTHER` with the Python type name. Crashes always fail, even when an
 error was expected.
 
 ### Deep-agent boundary
 
-- The agent owns only `src/user_code.rs`. Harness files and the error prelude
+- The agent owns only `src/user_code.c`. Harness files and the error prelude
   stay converter-owned.
-- Its filesystem backend is `FilesystemBackend(root_dir=<temp crate>,
-  virtual_mode=True)`: `/` maps to the temp crate and `..` traversal is
-  rejected, so paths like `/etc/passwd` resolve inside the crate, not the host.
+- Its filesystem backend is `FilesystemBackend(root_dir=<temp C project>,
+  virtual_mode=True)`: `/` maps to the temp C project and `..` traversal is
+  rejected, so paths like `/etc/passwd` resolve inside the project, not the host.
 - All command execution goes through `SandboxExecutor`; the agent has no direct
-  shell. `build_rust` compiles in place; `run_differential` reuses the verified
+  shell. `build_c` compiles in place; `run_differential` reuses the verified
   baseline and scoring.
 - `run_deep_agent` seeds prior code for repair, reads the final file, rejects the
-  placeholder or a file lacking `fn dispatch`, and deletes the workdir.
-- The outer `compile`/`verify` nodes rebuild a fresh crate and re-run the
+  placeholder or a file lacking `dispatch`, and deletes the workdir.
+- The outer `compile`/`verify` nodes rebuild a fresh C project and re-run the
   baseline, so the agent's internal result is advisory only.
 
 ---
@@ -295,7 +277,7 @@ error was expected.
 | `LLM_MODEL` | `deepseek-chat` |
 | `MLFLOW_ENABLED` | `true` |
 | `MLFLOW_TRACKING_URI` | `sqlite:///mlflow.db` |
-| `MLFLOW_EXPERIMENT_NAME` | `python-to-rust` |
+| `MLFLOW_EXPERIMENT_NAME` | `python-to-c` |
 
 ---
 
@@ -310,8 +292,8 @@ cp .env.example .env            # set LLM_API_KEY
 # Docker sandbox (preferred)
 docker build -f docker/Dockerfile.sandbox -t converter-sandbox:latest .
 
-# Optional: subprocess fallback dependency cache (already done on this machine)
-cargo fetch --manifest-path src/converter/sandbox/rust_harness/Cargo.toml
+# Optional: subprocess fallback requires a host C compiler and make
+cc --version && make --version
 
 # Checks
 .venv/bin/pytest -q
@@ -338,13 +320,13 @@ cargo fetch --manifest-path src/converter/sandbox/rust_harness/Cargo.toml
 - Installing `deepagents` upgraded `langgraph` to `1.2.20` and added `langchain`;
   all existing tests still pass against it.
 - Tracing backend is local MLflow; traces go to `./mlflow.db` (ignored by git).
-- Docker daemon is accessible; `converter-sandbox:latest` is built.
-- Host Rust toolchain is available; harness dependencies were fetched into the
-  host cargo cache.
-- `Cargo.lock` is committed in the harness directory and used by the Docker
-  image prefetch. Runtime builds are offline.
-- `src/agentic_py2rust.egg-info/` and `__pycache__` directories exist locally;
-  they are ignored by `.gitignore`.
+- Docker daemon is accessible; `converter-sandbox:latest` is an Alpine 3.20
+  image (284 MB) with `gcc`, `musl-dev`, `make`, and `python3`.
+- Host C toolchain is available (`cc`/`gcc` and `make`).
+- The C harness has no third-party dependencies, so runtime builds are offline
+  against the toolchain installed in the Docker image.
+- `src/agentic_py2rust.egg-info/` is regenerated (the distribution name is
+  unchanged) and, like `__pycache__`, is ignored by `.gitignore`.
 - A live `LLM_API_KEY` was configured in `.env` and real DeepSeek calls/evals
   succeeded (see section 2). The deep-agent path itself has only been exercised
   with scripted models so far.
@@ -354,16 +336,16 @@ cargo fetch --manifest-path src/converter/sandbox/rust_harness/Cargo.toml
 ## 9. Gotchas encountered (already handled)
 
 1. **`RLIMIT_NPROC` is per-user**, not per-process. Applying the Docker PID cap
-   in the subprocess fallback throttled cargo's thread pool. It was removed from
+   in the subprocess fallback throttled the build's processes. It was removed from
    the fallback; PID isolation is Docker-only.
-2. **`RLIMIT_AS` breaks LLVM/rustc** by preventing pthread stack reservation.
+2. **`RLIMIT_AS` breaks compiler builds** by preventing pthread stack reservation.
    It was removed from the subprocess fallback; memory isolation is Docker-only.
-3. **Rustup needs `RUSTUP_HOME`/`CARGO_HOME`**, not just `HOME`. The fallback
-   sanitizer now points them at the real host directories.
-4. **Docker build order:** offline mode must be enabled *after* `cargo fetch`,
-   otherwise the image build cannot resolve serde.
+3. **The fallback must not strip the toolchain** — it passes `CC`, `CFLAGS`, and
+   `LDFLAGS` through while keeping application secrets out.
+4. **The Docker image must ship `cc` and `make`:** runtime is offline, so the
+   toolchain has to be installed at image build time.
 5. **Wheel package data** needs explicit patterns for nested files:
-   `rust_harness/src/*.rs`, not just `rust_harness/*.rs`.
+   `c_harness/src/*.c` and `*.h`, not just `c_harness/*`.
 6. **Eval programs must be a package** (`__init__.py`) to be included in the
    wheel; the discovery logic skips `__init__.py`.
 7. **Tracing was switched from Langfuse to local MLflow** at the user's request.
@@ -371,7 +353,7 @@ cargo fetch --manifest-path src/converter/sandbox/rust_harness/Cargo.toml
    `agents.md` requirements. MLflow is optional at runtime; if absent, tracing
    is a no-op.
 8. **`FilesystemBackend(virtual_mode=True)` is what keeps deep-agent paths
-   contained.** A path like `/etc/passwd` is rewritten under the temp crate;
+   contained.** A path like `/etc/passwd` is rewritten under the temp C project;
    `..` raises `Path traversal not allowed`. Do not switch to a non-virtual
    backend for untrusted generated code.
 9. **Deep agents bypass `TrackedLLM`,** so token/latency/cost tracking is done by
@@ -393,7 +375,7 @@ cargo fetch --manifest-path src/converter/sandbox/rust_harness/Cargo.toml
 - User-test parser is intentionally narrow. Unsupported shapes are reported, not
   executed as pytest.
 - Coverage gaps are heuristic (function/category presence), not line/branch.
-- Message-pattern checks can be strict because Rust message text may differ.
+- Message-pattern checks can be strict because C message text may differ.
 - API is synchronous; long conversions should move to a job queue.
 - LLM/sandbox errors raised inside the graph become a report with
   `status="error"` (HTTP 200). Only pre-graph input errors are 400 and service
@@ -410,26 +392,29 @@ cargo fetch --manifest-path src/converter/sandbox/rust_harness/Cargo.toml
 - `deepagents` pulls additional provider packages (Anthropic/Google) even though
   only the OpenAI-compatible path is used.
 - No authentication/rate limiting on the API.
+- Frontend has no automated tests; `tsc --noEmit` runs as part of `npm run build`.
 - No CI configuration yet.
 
 ---
 
 ## 11. Suggested next-session priorities
 
-1. Run the deep-agent path against the live provider (`DEEP_AGENT_ENABLED=true`)
+1. Re-run the live end-to-end paths (user tests, generated tests, repair) against
+   the Alpine sandbox in Docker mode.
+2. Run the deep-agent path against the live provider (`DEEP_AGENT_ENABLED=true`)
    and compare compile rate, match rate, repair iterations, and cost against the
    single-shot baseline (`DEEP_AGENT_ENABLED=false`).
-2. Turn the fake-LLM smoke scripts into repeatable integration tests (subprocess
+3. Turn the fake-LLM smoke scripts into repeatable integration tests (subprocess
    executor, no real provider) for both paths and the repair loop.
-3. Decide whether infrastructure failures inside the graph should surface as
+4. Decide whether infrastructure failures inside the graph should surface as
    HTTP 502 while still returning the partial report.
-4. Add `pytest-asyncio`-style/class-based test support or broaden the ingester
+5. Add `pytest-asyncio`-style/class-based test support or broaden the ingester
    deliberately.
-5. Improve coverage heuristics (per-function edge/error requirements, branch
+6. Improve coverage heuristics (per-function edge/error requirements, branch
    awareness).
-6. Add a job queue + polling endpoint for long-running conversions.
-7. Add CI (ruff, mypy, pytest, optional Docker build).
-8. Add a pricing table for DeepSeek so cost reporting is meaningful.
+7. Add a job queue + polling endpoint for long-running conversions.
+8. Add CI (ruff, mypy, pytest, frontend build, optional Docker build).
+9. Add a pricing table for DeepSeek so cost reporting is meaningful.
 
 ---
 

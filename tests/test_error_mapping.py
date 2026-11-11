@@ -25,5 +25,5 @@ def test_exact_name_wins_before_mro():
 
 
 def test_mapping_table_names_match_variants():
-    for python_name, rust_variant in MAPPING_TABLE.items():
-        assert python_name == rust_variant
+    for python_name, variant in MAPPING_TABLE.items():
+        assert python_name == variant

@@ -25,4 +25,4 @@ class SandboxError(ConverterError):
 
 
 class CompileError(ConverterError):
-    """Rust compilation failed (kept for callers that want a typed signal)."""
+    """C compilation failed (kept for callers that want a typed signal)."""

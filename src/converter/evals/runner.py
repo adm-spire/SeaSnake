@@ -94,7 +94,7 @@ def run_suite(
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Run the Python-to-Rust converter evals")
+    parser = argparse.ArgumentParser(description="Run the Python-to-C converter evals")
     parser.add_argument(
         "--program",
         action="append",

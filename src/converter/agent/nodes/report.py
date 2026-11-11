@@ -1,11 +1,11 @@
-"""Terminal node: build the final report and clean up the Rust workdir."""
+"""Terminal node: build the final report and clean up the C workdir."""
 
 from __future__ import annotations
 
 from typing import Literal
 
 from ...core.usage import Usage
-from ...sandbox.rust_runner import cleanup_workdir
+from ...sandbox.c_runner import cleanup_workdir
 from ...testing.models import Source
 from ...verification.scoring import (
     ScoreSummary,
@@ -53,19 +53,19 @@ def report_node(state: ConverterState, services: Services) -> dict:
         compile_ok=state.compile_ok,
         pass_criteria_failures=reasons,
         failed_tests=summary.failures,
-        rust_code=state.rust_code,
+        c_code=state.c_code,
         usage=usage,
         diagnostics=diagnostics,
         last_error=state.last_error,
     )
 
-    cleanup_workdir(state.rust_workdir)
+    cleanup_workdir(state.workdir)
 
     return {
         "report": report,
         "status": status,
         "pass_failures": reasons,
-        "rust_workdir": None,
+        "workdir": None,
         "usage": usage,
         "diagnostics": diagnostics,
     }
@@ -77,7 +77,7 @@ def build_error_report(
     usage: Usage,
 ) -> Report:
     """Build a report for a failure that aborted the graph."""
-    cleanup_workdir(state.rust_workdir)
+    cleanup_workdir(state.workdir)
     summary = _summary(state)
     _, reasons = evaluate_pass_criteria(summary, state.pass_criteria)
     message = f"{type(error).__name__}: {error}"
@@ -101,7 +101,7 @@ def build_error_report(
         compile_ok=state.compile_ok,
         pass_criteria_failures=reasons,
         failed_tests=state.failures,
-        rust_code=state.rust_code,
+        c_code=state.c_code,
         usage=usage,
         diagnostics=diagnostics,
         last_error=message,
@@ -112,7 +112,7 @@ def _summary(state: ConverterState) -> ScoreSummary:
     if state.score is not None:
         return state.score
     if state.baseline:
-        return score_results(state.baseline, state.rust_results)
+        return score_results(state.baseline, state.translated_results)
     return ScoreSummary(
         overall_total=0,
         overall_passed=0,

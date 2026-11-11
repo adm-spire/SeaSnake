@@ -10,7 +10,7 @@ from converter.agent.deepagent import (
 )
 from converter.core.errors import LLMError
 from converter.core.usage import UsageTracker
-from converter.sandbox.rust_runner import (
+from converter.sandbox.c_runner import (
     PLACEHOLDER_USER_CODE,
     prepare_workdir,
 )
@@ -41,7 +41,7 @@ def make_baseline():
 
 
 def test_validate_user_code_accepts_dispatch():
-    code = "pub fn dispatch(case: &crate::harness::Case) -> Result<(), ()> { Ok(()) }\n"
+    code = "ConvResult dispatch(const Case *test_case) { return conv_ok(value_null()); }\n"
     assert validate_user_code(code, stage="translation").endswith("\n")
 
 
@@ -53,18 +53,18 @@ def test_validate_user_code_rejects_empty_or_placeholder(code):
 
 def test_validate_user_code_requires_dispatch():
     with pytest.raises(LLMError, match="dispatch"):
-        validate_user_code("pub fn add(a: i64) -> i64 { a }", stage="repair")
+        validate_user_code("long long add(long long a) { return a; }", stage="repair")
 
 
 def test_prepare_workdir_keeps_existing_translation(tmp_path: Path):
     prepare_workdir(str(tmp_path))
-    user_code = tmp_path / "src" / "user_code.rs"
+    user_code = tmp_path / "src" / "user_code.c"
     assert user_code.read_text() == PLACEHOLDER_USER_CODE
 
-    user_code.write_text("// real translation\n", encoding="utf-8")
+    user_code.write_text("/* real translation */\n", encoding="utf-8")
     prepare_workdir(str(tmp_path))
-    assert user_code.read_text() == "// real translation\n"
-    assert (tmp_path / "src" / "error_prelude.rs").is_file()
+    assert user_code.read_text() == "/* real translation */\n"
+    assert (tmp_path / "src" / "error_prelude.h").is_file()
 
 
 def test_build_deep_task_text_includes_translation_and_repair_context():
@@ -75,18 +75,18 @@ def test_build_deep_task_text_includes_translation_and_repair_context():
         baseline=make_baseline(),
     )
     assert "Verified baseline" in message
-    assert "/src/user_code.rs" in message
+    assert "/src/user_code.c" in message
 
     repair = build_deep_task_text(
         python_src=src,
         functions=analyze_public_functions(src),
         baseline=make_baseline(),
-        rust_code="fn dispatch() {}",
+        c_code="ConvResult dispatch(const Case *test_case) { return conv_ok(value_null()); }",
         diagnostics="mismatch",
         attempt=2,
     )
     assert repair.startswith("Repair attempt 2.")
-    assert "fn dispatch() {}" in repair
+    assert "ConvResult dispatch" in repair
     assert "mismatch" in repair
 
 
@@ -172,16 +172,15 @@ def test_run_deep_agent_writes_reads_and_cleans_up(monkeypatch):
     from converter.core.config import Settings
 
     valid_code = (
-        "pub fn dispatch(_case: &crate::harness::Case) "
-        "-> Result<serde_json::Value, crate::error_prelude::ConvError> { "
-        "Ok(serde_json::Value::Null) }\n"
+        "ConvResult dispatch(const Case *test_case) { "
+        "return conv_ok(value_null()); }\n"
     )
     write_call = AIMessage(
         content="",
         tool_calls=[
             {
                 "name": "write_file",
-                "args": {"file_path": "/src/user_code.rs", "content": valid_code},
+                "args": {"file_path": "/src/user_code.c", "content": valid_code},
                 "id": "call-1",
             }
         ],
@@ -214,5 +213,5 @@ def test_run_deep_agent_writes_reads_and_cleans_up(monkeypatch):
         baseline=make_baseline(),
     )
 
-    assert "fn dispatch" in result
+    assert "dispatch" in result
     assert not Path(captured["workdir"]).exists()

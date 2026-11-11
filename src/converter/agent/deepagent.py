@@ -2,14 +2,14 @@
 
 The outer LangGraph owns correctness gates (compile, differential verification,
 pass criteria). This module supplies an *inner* autonomous agent that owns only
-``src/user_code.rs`` inside a temporary crate and iterates with real tools:
+``src/user_code.c`` inside a temporary C project and iterates with real tools:
 
-* filesystem tools (rooted at the temp crate, path traversal blocked)
-* ``build_rust`` -> cargo via the sandbox executor
+* filesystem tools (rooted at the temp C project, path traversal blocked)
+* ``build_c`` -> make via the sandbox executor
 * ``run_differential`` -> the verified baseline through the built binary
 
 Keeping the harness files out of the agent's control means the JSON I/O contract
-and panic handling cannot drift. The node still feeds the final file back through
+and crash handling cannot drift. The node still feeds the final file back through
 the deterministic compile/verify nodes, so the agent never certifies itself.
 
 Dependencies on ``deepagents``/``langchain_openai`` are imported lazily so the
@@ -26,7 +26,7 @@ from pydantic import SecretStr
 from ..core.config import Settings
 from ..core.errors import LLMError
 from ..core.usage import UsageTracker
-from ..sandbox.rust_runner import (
+from ..sandbox.c_runner import (
     PLACEHOLDER_USER_CODE,
     build_existing,
     cleanup_workdir,
@@ -41,9 +41,9 @@ from ..translation.prompts import (
     format_baseline_text,
 )
 from ..verification.differ import (
+    actual_from_raw,
     describe_actual,
     describe_expected,
-    rust_actual_from_raw,
 )
 from ..verification.models import FailureCase
 from ..verification.scoring import score_results
@@ -161,8 +161,8 @@ def _make_tools(
     settings = services.settings
 
     @tool
-    def build_rust() -> str:
-        """Compile the crate and return cargo diagnostics."""
+    def build_c() -> str:
+        """Compile the C project and return compiler diagnostics."""
         result = build_existing(
             services.executor,
             workdir=workdir,
@@ -197,10 +197,10 @@ def _make_tools(
         except Exception as exc:  # noqa: BLE001 - report tool failure to the model
             return (
                 f"Could not run the binary ({type(exc).__name__}: {exc}). "
-                "Run build_rust first."
+                "Run build_c first."
             )
 
-        actuals = {test_id: rust_actual_from_raw(raw) for test_id, raw in raw.items()}
+        actuals = {test_id: actual_from_raw(raw) for test_id, raw in raw.items()}
         summary = score_results(baseline, actuals)
         if not summary.failures:
             return (
@@ -226,7 +226,7 @@ def _make_tools(
         """Return the verified input -> outcome baseline."""
         return format_baseline_text(baseline)
 
-    return [build_rust, run_differential, read_python_source, read_baseline]
+    return [build_c, run_differential, read_python_source, read_baseline]
 
 
 def _describe_failure(failure: FailureCase) -> str:
@@ -255,7 +255,7 @@ def build_deep_coder(
             "deep agents require the `deepagents` package; run `pip install -e .`"
         ) from exc
 
-    # virtual_mode maps "/" to the temp crate and rejects "..", so the built-in
+    # virtual_mode maps "/" to the temp C project and rejects "..", so the built-in
     # file tools cannot read or write outside the sandbox workdir.
     backend = FilesystemBackend(root_dir=workdir, virtual_mode=True)
     return create_deep_agent(
@@ -265,7 +265,7 @@ def build_deep_coder(
         ),
         system_prompt=DEEP_AGENT_SYSTEM_PROMPT,
         backend=backend,
-        name="rust-translator",
+        name="c-translator",
     )
 
 
@@ -275,12 +275,12 @@ def run_deep_agent(
     python_src: str,
     functions: list[FunctionInfo],
     baseline: list[BaselineCase],
-    rust_code: str | None = None,
+    c_code: str | None = None,
     diagnostics: str = "",
     failures: list[FailureCase] | None = None,
     attempt: int = 0,
 ) -> str:
-    """Run the deep agent and return the final ``src/user_code.rs`` contents."""
+    """Run the deep agent and return the final ``src/user_code.c`` contents."""
     if not services.settings.llm_api_key:
         raise LLMError("LLM_API_KEY is not configured")
 
@@ -289,10 +289,10 @@ def run_deep_agent(
     workdir = create_workdir()
     try:
         prepare_workdir(workdir)
-        if rust_code:
+        if c_code:
             from pathlib import Path
 
-            Path(workdir, "src", "user_code.rs").write_text(rust_code, encoding="utf-8")
+            Path(workdir, "src", "user_code.c").write_text(c_code, encoding="utf-8")
 
         agent = build_deep_coder(
             services, workdir=workdir, python_src=python_src, baseline=baseline
@@ -301,7 +301,7 @@ def run_deep_agent(
             python_src=python_src,
             functions=functions,
             baseline=baseline,
-            rust_code=rust_code,
+            c_code=c_code,
             diagnostics=diagnostics,
             failures=failures,
             attempt=attempt,
@@ -325,8 +325,8 @@ def run_deep_agent(
 
         from pathlib import Path
 
-        code = Path(workdir, "src", "user_code.rs").read_text(encoding="utf-8")
-        return validate_user_code(code, stage="translation" if not rust_code else "repair")
+        code = Path(workdir, "src", "user_code.c").read_text(encoding="utf-8")
+        return validate_user_code(code, stage="translation" if not c_code else "repair")
     finally:
         cleanup_workdir(workdir)
 
@@ -335,9 +335,9 @@ def validate_user_code(code: str, *, stage: str) -> str:
     """Reject empty, placeholder, or non-conforming agent output."""
     stripped = code.strip()
     if not stripped or stripped == PLACEHOLDER_USER_CODE.strip():
-        raise LLMError(f"deep agent ({stage}) produced no Rust code")
-    if "fn dispatch" not in stripped:
-        raise LLMError(f"deep agent ({stage}) output does not define `fn dispatch`")
+        raise LLMError(f"deep agent ({stage}) produced no C code")
+    if "dispatch" not in stripped:
+        raise LLMError(f"deep agent ({stage}) output does not define `dispatch`")
     return stripped.rstrip() + "\n"
 
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from ...testing.analysis import analyze_public_functions
-from ...translation.translator import repair_rust
+from ...translation.translator import repair_c
 from ..deepagent import run_deep_agent
 from ..services import Services
 from ..state import ConverterState, Diagnostic
@@ -13,27 +13,27 @@ def repair_node(state: ConverterState, services: Services) -> dict:
     attempt = state.attempt + 1
     functions = analyze_public_functions(state.python_src)
     diagnostics_text = state.compile_diagnostics or (
-        "Rust compiled successfully, but differential verification found mismatches."
+        "C compiled successfully, but differential verification found mismatches."
     )
 
     if services.settings.deep_agent_enabled:
-        rust_code = run_deep_agent(
+        c_code = run_deep_agent(
             services,
             python_src=state.python_src,
             functions=functions,
             baseline=state.baseline,
-            rust_code=state.rust_code or "",
+            c_code=state.c_code or "",
             diagnostics=diagnostics_text,
             failures=state.failures,
             attempt=attempt,
         )
         mode = "deep agent"
     else:
-        rust_code = repair_rust(
+        c_code = repair_c(
             python_src=state.python_src,
             functions=functions,
             baseline=state.baseline,
-            rust_code=state.rust_code or "",
+            c_code=state.c_code or "",
             diagnostics=diagnostics_text,
             failures=state.failures,
             attempt=attempt,
@@ -47,7 +47,7 @@ def repair_node(state: ConverterState, services: Services) -> dict:
             stage="repair",
             severity="info",
             message=(
-                f"repair attempt {attempt}/{state.max_attempts} produced new Rust code "
+                f"repair attempt {attempt}/{state.max_attempts} produced new C code "
                 f"with the {mode} "
                 f"({len(state.failures)} failing case(s) reported)"
             ),
@@ -55,7 +55,7 @@ def repair_node(state: ConverterState, services: Services) -> dict:
     )
 
     return {
-        "rust_code": rust_code,
+        "c_code": c_code,
         "attempt": attempt,
         "compile_ok": None,
         "status": "translated",

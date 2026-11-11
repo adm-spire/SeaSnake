@@ -17,7 +17,7 @@ import { Panel, type PanelTab } from './components/Panel';
 import { StatusBar } from './components/StatusBar';
 import { DownloadIcon, PlayIcon, Spinner } from './components/Icons';
 
-const STORAGE_KEY = 'py2rust.files.v1';
+const STORAGE_KEY = 'py2c.files.v1';
 
 function loadFiles(): Record<EditableFile, string> {
   try {
@@ -35,12 +35,12 @@ function loadFiles(): Record<EditableFile, string> {
   return DEFAULT_FILES;
 }
 
-function tabLanguage(tab: TabId): 'python' | 'rust' {
-  return tab === 'user_code.rs' ? 'rust' : 'python';
+function tabLanguage(tab: TabId): 'python' | 'cpp' {
+  return tab === 'user_code.c' ? 'cpp' : 'python';
 }
 
 function FileBadge({ tab }: { tab: TabId }) {
-  if (tab === 'user_code.rs') return <span className="file-badge file-badge--rs">Rs</span>;
+  if (tab === 'user_code.c') return <span className="file-badge file-badge--c">C</span>;
   if (tab === 'tests.py') return <span className="file-badge file-badge--test">T</span>;
   return <span className="file-badge file-badge--py">Py</span>;
 }
@@ -48,7 +48,7 @@ function FileBadge({ tab }: { tab: TabId }) {
 export default function App() {
   const [files, setFiles] = useState<Record<EditableFile, string>>(loadFiles);
   const [activeFile, setActiveFile] = useState<TabId>('main.py');
-  const [rustCode, setRustCode] = useState<string | null>(null);
+  const [cCode, setCCode] = useState<string | null>(null);
   const [response, setResponse] = useState<ConvertResponse | null>(null);
   const [report, setReport] = useState<Report | null>(null);
   const [running, setRunning] = useState(false);
@@ -77,16 +77,16 @@ export default function App() {
   }, [files]);
 
   const tabs = useMemo<TabId[]>(
-    () => (rustCode ? ['main.py', 'tests.py', 'user_code.rs'] : ['main.py', 'tests.py']),
-    [rustCode],
+    () => (cCode ? ['main.py', 'tests.py', 'user_code.c'] : ['main.py', 'tests.py']),
+    [cCode],
   );
 
-  const isRustTab = activeFile === 'user_code.rs';
-  const editorValue = isRustTab ? (rustCode ?? '') : files[activeFile as EditableFile];
+  const isCTab = activeFile === 'user_code.c';
+  const editorValue = isCTab ? (cCode ?? '') : files[activeFile as EditableFile];
   const language = tabLanguage(activeFile);
 
   const handleChange = (value: string) => {
-    if (isRustTab) return;
+    if (isCTab) return;
     setFiles((prev) => ({ ...prev, [activeFile]: value }));
   };
 
@@ -116,10 +116,10 @@ export default function App() {
       setResponse(res);
       setReport(res.report);
 
-      if (res.rust_code) {
-        setRustCode(res.rust_code);
-        setActiveFile('user_code.rs');
-        addLog('success', 'Generated user_code.rs is ready.');
+      if (res.c_code) {
+        setCCode(res.c_code);
+        setActiveFile('user_code.c');
+        addLog('success', 'Generated user_code.c is ready.');
       }
 
       const level: LogLevel =
@@ -165,18 +165,18 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [addLog, handleConvert]);
 
-  const closeRustTab = () => {
-    setRustCode(null);
+  const closeCTab = () => {
+    setCCode(null);
     setActiveFile('main.py');
   };
 
-  const downloadRust = () => {
-    if (!rustCode) return;
-    const blob = new Blob([rustCode], { type: 'text/plain' });
+  const downloadC = () => {
+    if (!cCode) return;
+    const blob = new Blob([cCode], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
     anchor.href = url;
-    anchor.download = 'user_code.rs';
+    anchor.download = 'user_code.c';
     anchor.click();
     URL.revokeObjectURL(url);
   };
@@ -191,7 +191,7 @@ export default function App() {
           <span className="traffic-light traffic-light--yellow" />
           <span className="traffic-light traffic-light--green" />
           <span className="titlebar-title">
-            <span className="titlebar-app">Python → Rust Converter</span>
+            <span className="titlebar-app">Python → C Converter</span>
             <span className="titlebar-sep">—</span>
             <span className="titlebar-file">{activeFile}</span>
           </span>
@@ -213,7 +213,7 @@ export default function App() {
         <Explorer
           files={files}
           activeFile={activeFile}
-          hasRust={Boolean(rustCode)}
+          hasC={Boolean(cCode)}
           testMode={testMode}
           maxAttempts={maxAttempts}
           running={running}
@@ -221,7 +221,7 @@ export default function App() {
           onTestModeChange={setTestMode}
           onMaxAttemptsChange={setMaxAttempts}
           onRun={() => void handleConvert()}
-          onDownloadRust={downloadRust}
+          onDownloadC={downloadC}
         />
 
         <main className="editor-area">
@@ -236,14 +236,14 @@ export default function App() {
               >
                 <FileBadge tab={tab} />
                 <span className="tab-name">{tab}</span>
-                {tab === 'user_code.rs' ? (
+                {tab === 'user_code.c' ? (
                   <button
                     type="button"
                     className="tab-close"
                     title="Close generated file"
                     onClick={(event) => {
                       event.stopPropagation();
-                      closeRustTab();
+                      closeCTab();
                     }}
                   >
                     ×
@@ -254,8 +254,8 @@ export default function App() {
               </div>
             ))}
             <div className="tabs-fill" />
-            {rustCode && (
-              <button type="button" className="tab-action" onClick={downloadRust} title="Download user_code.rs">
+            {cCode && (
+              <button type="button" className="tab-action" onClick={downloadC} title="Download user_code.c">
                 <DownloadIcon />
                 <span>Download</span>
               </button>
@@ -266,7 +266,7 @@ export default function App() {
             <span>converter</span>
             <span className="breadcrumb-sep">›</span>
             <span className="breadcrumb-current">{activeFile}</span>
-            {isRustTab && <span className="breadcrumb-tag">generated</span>}
+            {isCTab && <span className="breadcrumb-tag">generated</span>}
           </div>
 
           <div className="editor-host">
@@ -274,7 +274,7 @@ export default function App() {
               path={activeFile}
               language={language}
               value={editorValue}
-              readOnly={isRustTab}
+              readOnly={isCTab}
               onChange={handleChange}
               onCursorChange={(line, column) => setCursor({ line, column })}
             />

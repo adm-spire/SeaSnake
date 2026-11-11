@@ -9,8 +9,10 @@ from pydantic import BaseModel, Field
 from ..testing.models import Category, ExpectedOutcome, Source
 
 
-class RustActual(BaseModel):
-    kind: Literal["value", "error", "panic", "timeout", "crash"]
+class ActualOutcome(BaseModel):
+    """What the translated C program actually produced for one case."""
+
+    kind: Literal["value", "error", "crash", "timeout"]
     value: Any | None = None
     error_variant: str | None = None
     message: str | None = None
@@ -30,5 +32,5 @@ class FailureCase(BaseModel):
     category: Category
     source: Source
     expected: ExpectedOutcome
-    actual: RustActual
+    actual: ActualOutcome
     reason: str

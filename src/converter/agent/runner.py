@@ -1,7 +1,7 @@
 """Orchestration entry point for a single conversion run.
 
 Streaming ``values`` lets us keep the last successful state if a node raises, so
-the error report can still include partial results and clean up the Rust
+the error report can still include partial results and clean up the C
 workdir. The runner never swallows input errors: those propagate to the API as
 4xx responses.
 """

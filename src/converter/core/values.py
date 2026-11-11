@@ -1,6 +1,6 @@
 """JSON-value comparison rules shared by validation and verification.
 
-The Python baseline and the Rust outcome are both normalized to JSON-compatible
+The Python baseline and the translated outcome are both normalized to JSON-compatible
 values. This module defines exactly what "equal" means so both sides agree.
 
 Rules

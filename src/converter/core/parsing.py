@@ -16,7 +16,7 @@ from .errors import LLMError
 _FENCE_RE = re.compile(r"```(?P<lang>[a-zA-Z0-9_+-]*)\s*\n(?P<body>.*?)```", re.DOTALL)
 
 
-def extract_code_block(text: str, language: str = "rust") -> str:
+def extract_code_block(text: str, language: str = "c") -> str:
     """Return the first fenced block for ``language``, else the first fence, else text."""
     matches = list(_FENCE_RE.finditer(text))
     for match in matches:

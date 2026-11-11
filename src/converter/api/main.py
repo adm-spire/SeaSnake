@@ -30,10 +30,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     configure_logging(settings.log_level)
 
     app = FastAPI(
-        title="Agentic Python-to-Rust Converter",
+        title="Agentic Python-to-C Converter",
         version="0.1.0",
         description=(
-            "Converts a constrained Python program to Rust, using a verified "
+            "Converts a constrained Python program to C, using a verified "
             "differential test baseline and a bounded repair loop."
         ),
     )
@@ -75,7 +75,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return ConvertResponse(
             run_id=state.run_id,
             status=state.status,
-            rust_code=state.rust_code,
+            c_code=state.c_code,
             report=state.report,
         )
 

@@ -4,7 +4,7 @@ import { DownloadIcon, PlayIcon, Spinner } from './Icons';
 interface ExplorerProps {
   files: Record<EditableFile, string>;
   activeFile: TabId;
-  hasRust: boolean;
+  hasC: boolean;
   testMode: TestMode;
   maxAttempts: string;
   running: boolean;
@@ -12,7 +12,7 @@ interface ExplorerProps {
   onTestModeChange: (mode: TestMode) => void;
   onMaxAttemptsChange: (value: string) => void;
   onRun: () => void;
-  onDownloadRust: () => void;
+  onDownloadC: () => void;
 }
 
 const TEST_MODES: { value: TestMode; label: string }[] = [
@@ -22,8 +22,8 @@ const TEST_MODES: { value: TestMode; label: string }[] = [
   { value: 'augment', label: 'Augment user tests' },
 ];
 
-function fileBadge(kind: 'py' | 'test' | 'rs') {
-  if (kind === 'rs') return <span className="file-badge file-badge--rs">Rs</span>;
+function fileBadge(kind: 'py' | 'test' | 'c') {
+  if (kind === 'c') return <span className="file-badge file-badge--c">C</span>;
   if (kind === 'test') return <span className="file-badge file-badge--test">T</span>;
   return <span className="file-badge file-badge--py">Py</span>;
 }
@@ -31,7 +31,7 @@ function fileBadge(kind: 'py' | 'test' | 'rs') {
 export function Explorer({
   files,
   activeFile,
-  hasRust,
+  hasC,
   testMode,
   maxAttempts,
   running,
@@ -39,7 +39,7 @@ export function Explorer({
   onTestModeChange,
   onMaxAttemptsChange,
   onRun,
-  onDownloadRust,
+  onDownloadC,
 }: ExplorerProps) {
   const lines = (content: string) => content.split('\n').length;
 
@@ -70,14 +70,14 @@ export function Explorer({
             <span className="tree-file-name">tests.py</span>
             <span className="tree-file-meta">{lines(files['tests.py'])}</span>
           </button>
-          {hasRust && (
+          {hasC && (
             <button
               type="button"
-              className={`tree-file ${activeFile === 'user_code.rs' ? 'active' : ''}`}
-              onClick={() => onOpen('user_code.rs')}
+              className={`tree-file ${activeFile === 'user_code.c' ? 'active' : ''}`}
+              onClick={() => onOpen('user_code.c')}
             >
-              {fileBadge('rs')}
-              <span className="tree-file-name">user_code.rs</span>
+              {fileBadge('c')}
+              <span className="tree-file-name">user_code.c</span>
               <span className="tree-file-meta">generated</span>
             </button>
           )}
@@ -117,7 +117,7 @@ export function Explorer({
 
         <button type="button" className="run-button" onClick={onRun} disabled={running}>
           {running ? <Spinner /> : <PlayIcon size={14} />}
-          <span>{running ? 'Converting…' : 'Convert to Rust'}</span>
+          <span>{running ? 'Converting…' : 'Convert to C'}</span>
         </button>
 
         <p className="field-hint">
@@ -126,10 +126,10 @@ export function Explorer({
             : 'Mode is sent explicitly to /convert.'}
         </p>
 
-        {hasRust && (
-          <button type="button" className="ghost-button" onClick={onDownloadRust}>
+        {hasC && (
+          <button type="button" className="ghost-button" onClick={onDownloadC}>
             <DownloadIcon />
-            <span>Download user_code.rs</span>
+            <span>Download user_code.c</span>
           </button>
         )}
       </div>

@@ -2,7 +2,7 @@
 
 Security model
 --------------
-All user-supplied Python and all generated Rust is untrusted. The preferred
+All user-supplied Python and all generated C is untrusted. The preferred
 executor runs every command in a fresh Docker container with:
 
 * no network (``--network none``)
@@ -138,10 +138,6 @@ class DockerSandboxExecutor(SandboxExecutor):
             f"{os.getuid()}:{os.getgid()}",
             "-e",
             "HOME=/tmp",
-            "-e",
-            "CARGO_HOME=/tmp/cargo",
-            "-e",
-            "CARGO_NET_OFFLINE=true",
         ]
         for key, value in (env or {}).items():
             docker_command.extend(["-e", f"{key}={value}"])
@@ -207,7 +203,7 @@ class SubprocessExecutor(SandboxExecutor):
 
     Memory and PID limits are deliberately Docker-only. RLIMIT_NPROC is
     per-user (it would throttle the developer's whole session), and RLIMIT_AS
-    breaks LLVM/rustc builds which reserve large thread stacks. The README is
+    breaks compiler builds which reserve large thread stacks. The README is
     explicit that Docker is the secure path.
     """
 
@@ -290,24 +286,16 @@ def _sanitized_env(workdir: Path) -> dict[str, str]:
         "LC_ALL",
         "LC_CTYPE",
         "TERM",
-        "RUSTUP_HOME",
-        "CARGO_HOME",
-        "CARGO_NET_OFFLINE",
         "SSL_CERT_FILE",
+        "CC",
+        "CFLAGS",
+        "LDFLAGS",
     }
     env = {key: value for key, value in os.environ.items() if key in allowed}
     env.setdefault("PATH", "/usr/local/bin:/usr/bin:/bin")
     env.setdefault("LANG", "C.UTF-8")
 
-    # HOME is redirected to the workdir, but rustup/cargo still need their real
-    # toolchain and cache directories or they will not find a toolchain.
-    original_home = os.environ.get("HOME")
-    if original_home:
-        env.setdefault("RUSTUP_HOME", os.path.join(original_home, ".rustup"))
-        env.setdefault("CARGO_HOME", os.path.join(original_home, ".cargo"))
-
     env["HOME"] = str(workdir)
-    env["CARGO_NET_OFFLINE"] = "true"
     env["PYTHONDONTWRITEBYTECODE"] = "1"
     return env
 

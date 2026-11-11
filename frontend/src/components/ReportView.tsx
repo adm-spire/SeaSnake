@@ -31,8 +31,6 @@ function describeActual(test: FailureCase): string {
       return `= ${formatJson(test.actual.value)}`;
     case 'error':
       return `${test.actual.error_variant ?? 'Error'}${test.actual.message ? `: ${test.actual.message}` : ''}`;
-    case 'panic':
-      return 'panicked';
     case 'timeout':
       return 'timed out';
     case 'crash':
@@ -83,8 +81,8 @@ export function ReportView({ report, response }: ReportViewProps) {
         </div>
       </div>
 
-      {response?.rust_code && (
-        <p className="report-note">Generated Rust is available in the user_code.rs tab.</p>
+      {response?.c_code && (
+        <p className="report-note">Generated C is available in the user_code.c tab.</p>
       )}
 
       {report.last_error && (

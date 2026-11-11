@@ -1,23 +1,23 @@
-"""Compile the generated Rust crate in the sandbox."""
+"""Compile the generated C project in the sandbox."""
 
 from __future__ import annotations
 
 from ...core.errors import ConverterError
-from ...sandbox.rust_runner import build, cleanup_workdir, create_workdir
+from ...sandbox.c_runner import build, cleanup_workdir, create_workdir
 from ..services import Services
 from ..state import ConverterState, Diagnostic
 
 
 def compile_node(state: ConverterState, services: Services) -> dict:
-    if not state.rust_code:
-        raise ConverterError("compile requested before Rust code was translated")
+    if not state.c_code:
+        raise ConverterError("compile requested before C code was translated")
 
-    cleanup_workdir(state.rust_workdir)
+    cleanup_workdir(state.workdir)
     workdir = create_workdir()
     try:
         result = build(
             services.executor,
-            rust_code=state.rust_code,
+            c_code=state.c_code,
             workdir=workdir,
             timeout_s=services.settings.compile_timeout_s,
         )
@@ -32,15 +32,15 @@ def compile_node(state: ConverterState, services: Services) -> dict:
             Diagnostic(
                 stage="compile",
                 severity="error",
-                message="Rust compilation failed",
+                message="C compilation failed",
                 raw=result.diagnostics,
             )
         )
         return {
-            "rust_workdir": None,
+            "workdir": None,
             "compile_ok": False,
             "compile_diagnostics": result.diagnostics,
-            "rust_results": {},
+            "translated_results": {},
             "failures": [],
             "score": None,
             "pass_failures": [],
@@ -51,14 +51,14 @@ def compile_node(state: ConverterState, services: Services) -> dict:
         Diagnostic(
             stage="compile",
             severity="info",
-            message=f"cargo build succeeded in {result.duration_ms} ms",
+            message=f"make succeeded in {result.duration_ms} ms",
         )
     )
     return {
-        "rust_workdir": workdir,
+        "workdir": workdir,
         "compile_ok": True,
         "compile_diagnostics": "",
-        "rust_results": {},
+        "translated_results": {},
         "failures": [],
         "score": None,
         "pass_failures": [],

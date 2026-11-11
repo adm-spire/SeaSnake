@@ -11,7 +11,7 @@ from ..verification.models import FailureCase
 from .prompts import build_repair_messages, build_translate_messages
 
 
-def translate_to_rust(
+def translate_to_c(
     *,
     python_src: str,
     functions: list[FunctionInfo],
@@ -29,12 +29,12 @@ def translate_to_rust(
     return _validated_code(response.text, stage="translation")
 
 
-def repair_rust(
+def repair_c(
     *,
     python_src: str,
     functions: list[FunctionInfo],
     baseline: list[BaselineCase],
-    rust_code: str,
+    c_code: str,
     diagnostics: str,
     failures: list[FailureCase],
     attempt: int,
@@ -45,7 +45,7 @@ def repair_rust(
             python_src=python_src,
             functions=functions,
             baseline=baseline,
-            rust_code=rust_code,
+            c_code=c_code,
             diagnostics=diagnostics,
             failures=failures,
             attempt=attempt,
@@ -56,9 +56,9 @@ def repair_rust(
 
 
 def _validated_code(text: str, *, stage: str) -> str:
-    code = extract_code_block(text, "rust").strip()
+    code = extract_code_block(text, "c").strip()
     if not code:
-        raise LLMError(f"{stage} returned empty Rust code")
-    if "fn dispatch" not in code:
-        raise LLMError(f"{stage} response does not define `fn dispatch`")
+        raise LLMError(f"{stage} returned empty C code")
+    if "dispatch" not in code:
+        raise LLMError(f"{stage} response does not define `dispatch`")
     return code + "\n"

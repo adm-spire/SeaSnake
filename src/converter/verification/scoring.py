@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 from ..testing.models import BaselineCase, Category
 from .differ import compare_outcome
-from .models import FailureCase, RustActual
+from .models import ActualOutcome, FailureCase
 
 
 class PassCriteria(BaseModel):
@@ -43,7 +43,7 @@ class ScoreSummary(BaseModel):
 
 def score_results(
     baseline: list[BaselineCase],
-    actuals: dict[str, RustActual],
+    actuals: dict[str, ActualOutcome],
 ) -> ScoreSummary:
     totals: dict[str, int] = {category.value: 0 for category in Category}
     passed_counts: dict[str, int] = {category.value: 0 for category in Category}
@@ -57,7 +57,7 @@ def score_results(
 
         actual = actuals.get(
             case.test_id,
-            RustActual(kind="crash", message="missing Rust result"),
+            ActualOutcome(kind="crash", message="missing translated result"),
         )
         result = compare_outcome(case.expected, actual)
         if result.ok:

@@ -1,14 +1,16 @@
-"""Build and run the generated Rust crate.
+"""Build and run the generated C project.
 
-The crate layout is fixed:
+The project layout is fixed:
 
-    Cargo.toml
-    src/main.rs          # converter-owned harness
-    src/harness.rs       # converter-owned helpers
-    src/error_prelude.rs # converter-owned error enum
-    src/user_code.rs     # LLM-authored translation
+    Makefile
+    src/main.c           # converter-owned harness
+    src/harness.c        # converter-owned JSON + argument helpers
+    src/harness.h
+    src/error_prelude.h  # converter-owned error enum
+    src/user_code.h      # converter-owned dispatch declaration
+    src/user_code.c      # LLM-authored translation
 
-The LLM only owns ``src/user_code.rs``, so the JSON I/O contract and panic
+The LLM only owns ``src/user_code.c``, so the JSON I/O contract and error
 handling cannot be broken by translation mistakes.
 """
 
@@ -27,25 +29,28 @@ from .executor import ExecResult, SandboxExecutor
 
 logger = get_logger(__name__)
 
-TEMPLATE_DIR = Path(__file__).resolve().parent / "rust_harness"
-PRELUDE_PATH = Path(__file__).resolve().parent.parent / "errors_map" / "rust_prelude.rs"
+TEMPLATE_DIR = Path(__file__).resolve().parent / "c_harness"
+PRELUDE_PATH = Path(__file__).resolve().parent.parent / "errors_map" / "c_prelude.h"
 BINARY_NAME = "converter_sandbox"
-BINARY_RELATIVE_PATH = Path("target") / "release" / BINARY_NAME
+BINARY_RELATIVE_PATH = Path(BINARY_NAME)
 
-# Written only so the crate is buildable before the agent authors a translation.
-# The deep-agent runner treats an unchanged placeholder as "no code produced".
+# Written only so the project is buildable before the agent authors a
+# translation. The deep-agent runner treats an unchanged placeholder as
+# "no code produced".
 PLACEHOLDER_USER_CODE = """\
-//! Placeholder: the translation agent replaces this file.
+/*
+ * Placeholder: the translation agent replaces this file.
+ *
+ * It must expose:
+ *
+ *     ConvResult dispatch(const Case *test_case);
+ */
 
-use crate::error_prelude::ConvError;
+#include "harness.h"
 
-pub fn dispatch(
-    _case: &crate::harness::Case,
-) -> Result<serde_json::Value, ConvError> {
-    Err(ConvError::Other {
-        python_type: "NotImplementedError".to_string(),
-        message: "translation not written yet".to_string(),
-    })
+ConvResult dispatch(const Case *test_case) {
+    (void)test_case;
+    return conv_other("NotImplementedError", "translation not written yet");
 }
 """
 
@@ -60,7 +65,7 @@ class BuildResult:
     stderr: str
 
 
-def create_workdir(prefix: str = "converter-rust-") -> str:
+def create_workdir(prefix: str = "converter-c-") -> str:
     return tempfile.mkdtemp(prefix=prefix)
 
 
@@ -72,16 +77,16 @@ def cleanup_workdir(workdir: str | None) -> None:
 def prepare_workdir(workdir: str) -> str:
     """Populate a workdir with the converter-owned harness and a stub user file.
 
-    The deep agent edits ``src/user_code.rs`` in place, so this never overwrites
+    The deep agent edits ``src/user_code.c`` in place, so this never overwrites
     an existing translation.
     """
     workdir_path = Path(workdir)
     workdir_path.mkdir(parents=True, exist_ok=True)
     shutil.copytree(TEMPLATE_DIR, workdir_path, dirs_exist_ok=True)
-    (workdir_path / "src" / "error_prelude.rs").write_text(
+    (workdir_path / "src" / "error_prelude.h").write_text(
         PRELUDE_PATH.read_text(encoding="utf-8"), encoding="utf-8"
     )
-    user_code = workdir_path / "src" / "user_code.rs"
+    user_code = workdir_path / "src" / "user_code.c"
     if not user_code.exists():
         user_code.write_text(PLACEHOLDER_USER_CODE, encoding="utf-8")
     return str(workdir_path)
@@ -93,10 +98,10 @@ def build_existing(
     workdir: str,
     timeout_s: int,
 ) -> BuildResult:
-    """Compile a workdir as-is, without rewriting ``user_code.rs``."""
+    """Compile a workdir as-is, without rewriting ``user_code.c``."""
     workdir_path = Path(workdir)
     result = executor.run(
-        ["cargo", "build", "--offline", "--release"],
+        ["make", "-B"],
         workdir=workdir_path,
         timeout_s=timeout_s,
     )
@@ -106,13 +111,13 @@ def build_existing(
 def build(
     executor: SandboxExecutor,
     *,
-    rust_code: str,
+    c_code: str,
     workdir: str,
     timeout_s: int,
 ) -> BuildResult:
     workdir_path = Path(workdir)
     prepare_workdir(workdir)
-    (workdir_path / "src" / "user_code.rs").write_text(rust_code, encoding="utf-8")
+    (workdir_path / "src" / "user_code.c").write_text(c_code, encoding="utf-8")
     return build_existing(executor, workdir=workdir, timeout_s=timeout_s)
 
 
@@ -123,9 +128,9 @@ def _build_result(
     ok = result.returncode == 0 and not result.timed_out and binary.is_file()
     diagnostics = (result.stdout + "\n" + result.stderr).strip()
     if result.timed_out:
-        diagnostics = f"cargo build timed out after {timeout_s}s\n{diagnostics}"
+        diagnostics = f"C build timed out after {timeout_s}s\n{diagnostics}"
     if not ok and not diagnostics:
-        diagnostics = f"cargo build failed with return code {result.returncode}"
+        diagnostics = f"C build failed with return code {result.returncode}"
 
     return BuildResult(
         ok=ok,
@@ -151,7 +156,7 @@ def run_cases(
     workdir_path = Path(workdir)
     binary = workdir_path / BINARY_RELATIVE_PATH
     if not binary.is_file():
-        raise SandboxError("Rust binary is missing; build did not succeed")
+        raise SandboxError("C binary is missing; build did not succeed")
 
     (workdir_path / "cases.json").write_text(json.dumps(cases), encoding="utf-8")
     results_path = workdir_path / "results.json"
@@ -164,12 +169,12 @@ def run_cases(
     )
 
     if result.timed_out:
-        logger.warning("Rust differential run timed out")
+        logger.warning("C differential run timed out")
         return {str(case["test_id"]): {"kind": "timeout"} for case in cases}
 
     if result.returncode != 0 or not results_path.is_file():
-        message = (result.stderr or result.stdout or "Rust runner crashed")[:2000]
-        logger.warning("Rust runner failed: %s", message)
+        message = (result.stderr or result.stdout or "C runner crashed")[:2000]
+        logger.warning("C runner failed: %s", message)
         return {
             str(case["test_id"]): {"kind": "crash", "message": message}
             for case in cases
@@ -178,7 +183,7 @@ def run_cases(
     try:
         raw = json.loads(results_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        raise SandboxError(f"could not read Rust results: {exc}") from exc
+        raise SandboxError(f"could not read C results: {exc}") from exc
 
     outcomes: dict[str, dict[str, Any]] = {}
     for row in raw:

@@ -1,6 +1,6 @@
-"""Differential comparison: Python baseline outcome vs Rust outcome.
+"""Differential comparison: Python baseline outcome vs C outcome.
 
-The error side uses the shared mapping in ``errors_map``. A panic never
+The error side uses the shared mapping in ``errors_map``. A crash never
 satisfies any expectation, including an expected error; a timeout or crash
 always fails.
 """
@@ -13,10 +13,10 @@ from typing import Any
 from ..core.values import values_equal
 from ..errors_map.mapping import variant_name_for_python_exception
 from ..testing.models import ExpectedKind, ExpectedOutcome
-from .models import MatchResult, RustActual
+from .models import ActualOutcome, MatchResult
 
 
-def compare_outcome(expected: ExpectedOutcome, actual: RustActual) -> MatchResult:
+def compare_outcome(expected: ExpectedOutcome, actual: ActualOutcome) -> MatchResult:
     if expected.kind == ExpectedKind.VALUE:
         if actual.kind != "value":
             return MatchResult(
@@ -35,18 +35,10 @@ def compare_outcome(expected: ExpectedOutcome, actual: RustActual) -> MatchResul
 
     if expected.kind == ExpectedKind.ERROR:
         if actual.kind != "error":
-            if actual.kind == "panic":
-                return MatchResult(
-                    ok=False,
-                    reason=(
-                        "expected Err("
-                        f"{_expected_variant(expected)}) but the Rust code panicked"
-                    ),
-                )
             return MatchResult(
                 ok=False,
                 reason=(
-                    f"expected Err({_expected_variant(expected)}), got {actual.kind}"
+                    f"expected {_expected_variant(expected)} error, got {actual.kind}"
                     + (f" ({actual.message})" if actual.message else "")
                 ),
             )
@@ -56,8 +48,8 @@ def compare_outcome(expected: ExpectedOutcome, actual: RustActual) -> MatchResul
             return MatchResult(
                 ok=False,
                 reason=(
-                    f"expected Err({expected_variant}) "
-                    f"({expected.exception_type}), got Err({actual.error_variant})"
+                    f"expected {expected_variant} "
+                    f"({expected.exception_type}), got {actual.error_variant}"
                 ),
             )
 
@@ -95,7 +87,7 @@ def describe_expected(expected: ExpectedOutcome) -> str:
     if expected.kind == ExpectedKind.VALUE:
         return f"value {expected.value!r}"
     variant = _expected_variant(expected)
-    detail = f"Err({variant})"
+    detail = variant
     if expected.exception_type and expected.exception_type != variant:
         detail += f" for {expected.exception_type}"
     if expected.message_pattern:
@@ -103,26 +95,26 @@ def describe_expected(expected: ExpectedOutcome) -> str:
     return detail
 
 
-def rust_actual_from_raw(raw: dict[str, Any]) -> RustActual:
+def actual_from_raw(raw: dict[str, Any]) -> ActualOutcome:
     kind = raw.get("kind")
     if kind == "value":
-        return RustActual(kind="value", value=raw.get("value"))
+        return ActualOutcome(kind="value", value=raw.get("value"))
     if kind == "error":
-        return RustActual(
+        return ActualOutcome(
             kind="error",
             error_variant=raw.get("error_variant"),
             message=raw.get("message"),
         )
-    if kind in {"panic", "timeout", "crash"}:
-        return RustActual(kind=kind, message=raw.get("message"))
-    return RustActual(kind="crash", message=f"unknown outcome kind: {kind!r}")
+    if kind in {"timeout", "crash"}:
+        return ActualOutcome(kind=kind, message=raw.get("message"))
+    return ActualOutcome(kind="crash", message=f"unknown outcome kind: {kind!r}")
 
 
-def describe_actual(actual: RustActual) -> str:
+def describe_actual(actual: ActualOutcome) -> str:
     if actual.kind == "value":
         return f"value {actual.value!r}"
     if actual.kind == "error":
-        detail = f"Err({actual.error_variant})"
+        detail = f"{actual.error_variant}"
         if actual.message:
             detail += f": {actual.message}"
         return detail

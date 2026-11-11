@@ -15,7 +15,7 @@ from converter.testing.models import (
     PythonOutcome,
     Source,
 )
-from converter.verification.models import RustActual
+from converter.verification.models import ActualOutcome
 
 
 def make_state(**overrides) -> ConverterState:
@@ -92,7 +92,7 @@ def make_baseline():
 def test_report_node_marks_passing_run_as_passed():
     state = make_state(
         baseline=[make_baseline()],
-        rust_results={"t1": RustActual(kind="value", value=3)},
+        translated_results={"t1": ActualOutcome(kind="value", value=3)},
         status="verified",
     )
     services = SimpleNamespace(tracker=UsageTracker())
@@ -106,7 +106,7 @@ def test_report_node_marks_passing_run_as_passed():
 def test_report_node_marks_missing_result_as_failed():
     state = make_state(
         baseline=[make_baseline()],
-        rust_results={},
+        translated_results={},
         status="verified",
     )
     services = SimpleNamespace(tracker=UsageTracker())

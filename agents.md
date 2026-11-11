@@ -1,11 +1,11 @@
-You are helping me build a production-grade agentic Python-to-Rust code converter. 
+You are helping me build a production-grade agentic Python-to-C code converter. 
 I learn by reading complete working code, understanding it, then improving it, so 
 generate FULL working code, explain each module's design as you build it, and keep 
 it clean, idiomatic, and well-commented. Favor clarity over cleverness.
 
 WHAT TO BUILD:
 An agent that takes Python code (plus optional tests), establishes a verified test 
-baseline, converts the code to Rust, and verifies the Rust against that baseline. 
+baseline, converts the code to C, and verifies the C against that baseline. 
 It loops through a repair step until the pass criteria are met or a max-attempt cap 
 is hit.
 
@@ -41,17 +41,17 @@ SHARED PIPELINE (both paths):
 3. capture_baseline: for every validated test, record input -> outcome, where 
    outcome is either a return value OR an error (exception type). Tag each case 
    with its category and source (user | generated).
-4. translate: convert the Python code to Rust.
+4. translate: convert the Python code to C.
 5. compile: build in the sandbox.
-6. verify: differential testing. Run every baseline input through the Rust and 
+6. verify: differential testing. Run every baseline input through the C and 
    compare outcomes:
-   - value outcomes: Rust output must equal the Python output
+   - value outcomes: C output must equal the Python output
    - error outcomes: use an explicit ERROR-MAPPING CONVENTION. Python exceptions map 
-     to Rust error variants (e.g. ValueError -> Err(ConvError::ValueError(..)), 
-     IndexError/KeyError -> corresponding variants). The test passes if the Rust 
-     returns the mapped Err variant. Define this mapping in one place and document 
-     it. Decide and document how panics are treated (default: a panic where an 
-     Err was expected counts as a FAIL).
+     to C error variants (e.g. ValueError -> CONV_VALUE_ERROR,
+     IndexError/KeyError -> corresponding variants). The test passes if the C
+     returns the mapped error result. Define this mapping in one place and
+     document it. Decide and document how crashes are treated (default: a crash
+     where an error was expected counts as a FAIL).
 7. repair: on compile failure or any mismatch, feed exact compiler diagnostics + 
    the failing cases (input, expected outcome, actual outcome, category) back to 
    the LLM; increment attempt; retry from compile.
@@ -61,7 +61,7 @@ SHARED PIPELINE (both paths):
 
 FINAL REPORT: per-category pass rates, test source breakdown (user vs generated), 
 user tests that failed on the original Python, number of repair iterations, final 
-Rust code, total tokens/cost/latency.
+C code, total tokens/cost/latency.
 
 SCOPE (Phase 1): constrain to a practical Python subset (pure functions, basic 
 types, minimal stdlib, no C-extension deps). Document the supported subset in README.
@@ -70,13 +70,13 @@ STACK:
 - Python, LangGraph (StateGraph with typed state; this is a CYCLIC graph with a 
   repair loop and a branch on test_mode; do NOT use legacy LangChain chains), Pydantic
 - Provider-agnostic LLM client (DeepSeek now; swappable via config)
-- Rust toolchain (cargo/rustc) run in an ISOLATED sandbox
+- C toolchain (cc/make) run in an ISOLATED sandbox
 - Langfuse for tracing
 - FastAPI submit endpoint
 
 STATE (typed): {python_src, user_tests, test_mode, test_cases (normalized, with 
 category + source), invalid_user_tests, baseline (input -> value|error outcome), 
-rust_code, rust_results, diagnostics, attempt, max_attempts, pass_criteria, status, 
+c_code, translated_results, diagnostics, attempt, max_attempts, pass_criteria, status, 
 report}
 
 ARCHITECTURE (one responsibility per module):
@@ -86,9 +86,9 @@ ARCHITECTURE (one responsibility per module):
                  test-regeneration loop, and the repair loop
 - testing/       normalized test-case model, pytest ingestion, categorized 
                  generation, validation against Python, baseline capture
-- errors_map/    the Python-exception -> Rust-error-variant convention (single 
+- errors_map/    the Python-exception -> C-error-variant convention (single 
                  source of truth, used by translation AND verification)
-- sandbox/       isolated execution for BOTH Python test runs and Rust 
+- sandbox/       isolated execution for BOTH Python test runs and C 
                  compile/run: temp dirs, subprocess with TIMEOUTS and resource 
                  limits, no network, killed on timeout (Docker preferred). All 
                  generated code and user-supplied code is UNTRUSTED.

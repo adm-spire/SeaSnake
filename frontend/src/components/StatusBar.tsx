@@ -37,7 +37,7 @@ export function StatusBar({
         {durationMs !== null && <span className="status-item">{durationMs} ms</span>}
       </div>
       <div className="status-right">
-        <span className="status-item">{language === 'rust' ? 'Rust' : 'Python'}</span>
+        <span className="status-item">{language === 'cpp' ? 'C' : 'Python'}</span>
         <span className="status-item">Ln {line}, Col {column}</span>
         <span className="status-item">Spaces: 4</span>
         <span className="status-item">UTF-8</span>

@@ -2,7 +2,7 @@ export type TestMode = 'auto' | 'user' | 'generate' | 'augment';
 
 export type EditableFile = 'main.py' | 'tests.py';
 
-export type TabId = EditableFile | 'user_code.rs';
+export type TabId = EditableFile | 'user_code.c';
 
 export interface CategoryScore {
   total: number;
@@ -19,8 +19,8 @@ export interface ExpectedOutcome {
   approx?: boolean;
 }
 
-export interface RustActual {
-  kind: 'value' | 'error' | 'panic' | 'timeout' | 'crash';
+export interface ActualOutcome {
+  kind: 'value' | 'error' | 'crash' | 'timeout';
   value?: unknown;
   error_variant?: string | null;
   message?: string | null;
@@ -35,7 +35,7 @@ export interface FailureCase {
   category: string;
   source: string;
   expected: ExpectedOutcome;
-  actual: RustActual;
+  actual: ActualOutcome;
   reason: string;
 }
 
@@ -73,7 +73,7 @@ export interface Report {
   compile_ok: boolean | null;
   pass_criteria_failures: string[];
   failed_tests: FailureCase[];
-  rust_code?: string | null;
+  c_code?: string | null;
   usage: Usage;
   diagnostics: Diagnostic[];
   last_error?: string | null;
@@ -82,7 +82,7 @@ export interface Report {
 export interface ConvertResponse {
   run_id: string;
   status: string;
-  rust_code: string | null;
+  c_code: string | null;
   report: Report | null;
 }
 

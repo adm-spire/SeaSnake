@@ -1,34 +1,16 @@
-# Sandbox image for BOTH Python validation runs and Rust compile/run.
+# Sandbox image for BOTH Python validation runs and C compile/run.
 # Build from the repository root:
 #   docker build -f docker/Dockerfile.sandbox -t converter-sandbox:latest .
 #
-# The image fetches Rust dependencies once at build time. Runtime containers
-# run with no network and an offline cargo cache, so builds never reach out.
-FROM rust:1-slim
+# Alpine keeps the image small (~284 MB versus ~1.3 GB for gcc:13-bookworm).
+# The C harness is standard C11 + libm, so musl is a fine target. Runtime
+# containers run with no network and a read-only root filesystem, so the
+# toolchain and Python must be present in the image.
+FROM alpine:3.20
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends python3 \
-    && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache gcc musl-dev make python3
 
-# Populate an immutable cargo cache used by the runtime entrypoint.
-ENV CARGO_HOME=/opt/cargo-cache
-
-WORKDIR /opt/prefetch
-COPY src/converter/sandbox/rust_harness/Cargo.toml ./Cargo.toml
-COPY src/converter/sandbox/rust_harness/Cargo.lock ./Cargo.lock
-RUN mkdir -p src \
-    && printf 'fn main() {}\n' > src/main.rs \
-    && cargo fetch \
-    && rm -rf /opt/prefetch
-
-COPY docker/sandbox-entrypoint.sh /usr/local/bin/sandbox-entrypoint
-RUN chmod 0755 /usr/local/bin/sandbox-entrypoint
-
-# Runtime containers get a writable tmpfs at /tmp (see sandbox/executor.py).
-ENV CARGO_HOME=/tmp/cargo \
-    HOME=/tmp \
-    CARGO_NET_OFFLINE=true
+ENV HOME=/tmp
 
 WORKDIR /workdir
-ENTRYPOINT ["/usr/local/bin/sandbox-entrypoint"]
-CMD ["bash"]
+CMD ["sh"]

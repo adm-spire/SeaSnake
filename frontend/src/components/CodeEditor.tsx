@@ -2,7 +2,7 @@ import Editor, { type OnMount } from '@monaco-editor/react';
 
 interface CodeEditorProps {
   path: string;
-  language: 'python' | 'rust';
+  language: 'python' | 'cpp';
   value: string;
   readOnly?: boolean;
   onChange?: (value: string) => void;
@@ -35,7 +35,7 @@ export function CodeEditor({
       loading={<div className="editor-loading">Loading editor…</div>}
       options={{
         readOnly,
-        readOnlyMessage: { value: 'Generated Rust — read only' },
+        readOnlyMessage: { value: 'Generated C — read only' },
         fontSize: 14,
         fontFamily:
           "'JetBrains Mono', 'Fira Code', 'Cascadia Code', Menlo, Consolas, monospace",

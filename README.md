@@ -1,13 +1,14 @@
-# Agentic Python-to-Rust Converter
+# Agentic Python-to-C Converter
 
-Converts a constrained Python program to Rust by first establishing a **verified
+Converts a constrained Python program to C by first establishing a **verified
 behavioral baseline** from tests, then translating, compiling, and running every
-baseline input through the Rust code. On any compile error or outcome mismatch,
+baseline input through the C code. On any compile error or outcome mismatch,
 structured feedback goes back to the LLM in a bounded repair loop.
 
-This is Phase 1: pure functions, basic types, minimal stdlib, no C-extension
-dependencies. The project is intentionally organized so each concern has one
-module and the two test paths converge on one verification pipeline.
+This is Phase 1: pure functions, basic types, minimal stdlib, and no third-party
+Python packages or native extensions. The project is intentionally organized so
+each concern has one module and the two test paths converge on one verification
+pipeline.
 
 ---
 
@@ -36,32 +37,28 @@ cd frontend && npm install && npm run dev
 
 If Docker is unavailable, set `SANDBOX_MODE=subprocess` (or leave
 `SANDBOX_FALLBACK_TO_SUBPROCESS=true`). The fallback is less isolated; see
-[Security](#security). Because Rust builds are offline in every sandbox, the
-subprocess fallback also needs the harness dependencies cached once on the host:
-
-```bash
-cargo fetch --manifest-path src/converter/sandbox/rust_harness/Cargo.toml
-```
-
-The Docker image performs this prefetch during `docker build`.
+[Security](#security). The C harness has no third-party dependencies, so the
+subprocess fallback only needs a system C compiler (`cc`) and `make` on the host.
+The Docker image installs both during `docker build`.
 
 ---
 
 ## Architecture
 
-All packages live under `src/converter/`.
+Python packages live under `src/converter/`; the UI lives in `frontend/`.
 
 ```text
 api/            FastAPI submit endpoint
 agent/          LangGraph state machine (state, routing, graph, nodes, runner)
 testing/        Normalized tests, pytest AST ingestion, generation, validation, baseline
-errors_map/     Python-exception -> Rust-variant convention (one source of truth)
-sandbox/        Docker-first isolated execution for Python and Rust
+errors_map/     Python-exception -> C-error-variant convention (one source of truth)
+sandbox/        Docker-first isolated execution for Python and C
 translation/    Translate/repair prompts and LLM-facing translator
 verification/   Differential comparison, per-category scores, pass criteria
 observability/  Optional local MLflow tracing
 evals/          Benchmark programs and metrics
 core/           Config, logging, errors, LLM client, usage tracking, value comparison
+frontend/       Vite + React + Monaco workspace UI (separate npm app)
 tests/          Unit tests for routing, mapping, ingestion, differ, transitions
 ```
 
@@ -124,13 +121,13 @@ The `translate` and `repair` nodes are backed by a **deep agent** (LangChain
 `deepagents`, built on LangGraph) whenever `DEEP_AGENT_ENABLED=true` (default).
 Instead of a single prompt, the agent gets an inner autonomous loop with:
 
-- filesystem tools rooted at a temporary crate (`src/user_code.rs` only),
-- `build_rust` (cargo through the sandbox executor),
+- filesystem tools rooted at a temporary C project (`src/user_code.c` only),
+- `build_c` (make through the sandbox executor),
 - `run_differential` (the verified baseline through the built binary),
 - `read_python_source` and `read_baseline`.
 
 The agent iterates until the build and the baseline pass, then returns the final
-`src/user_code.rs`. The outer graph still recompiles and re-verifies that file
+`src/user_code.c`. The outer graph still recompiles and re-verifies that file
 deterministically, so the agent never certifies itself. Set
 `DEEP_AGENT_ENABLED=false` to fall back to the original single-shot prompters.
 
@@ -191,7 +188,7 @@ never silently skipped.
 
 `capture_baseline` stores the confirmed `input -> value | error` oracle, tagged
 with category and source (`user` or `generated`). Translation receives this
-baseline as ground truth. Verification runs the same inputs through Rust.
+baseline as ground truth. Verification runs the same inputs through C.
 
 ---
 
@@ -200,18 +197,18 @@ baseline as ground truth. Verification runs the same inputs through Rust.
 Defined once in `errors_map/mapping.py`, used by both the translation prompt and
 the verifier.
 
-| Python exception | Rust `ConvError` variant |
+| Python exception | C `ConvErrorKind` |
 |---|---|
-| `ValueError` | `ConvError::ValueError(String)` |
-| `TypeError` | `ConvError::TypeError(String)` |
-| `KeyError` | `ConvError::KeyError(String)` |
-| `IndexError` | `ConvError::IndexError(String)` |
-| `ZeroDivisionError` | `ConvError::ZeroDivisionError(String)` |
-| `OverflowError` | `ConvError::OverflowError(String)` |
-| `ArithmeticError` | `ConvError::ArithmeticError(String)` |
-| `AssertionError` | `ConvError::AssertionError(String)` |
-| `RuntimeError` | `ConvError::RuntimeError(String)` |
-| anything else | `ConvError::Other { python_type, message }` |
+| `ValueError` | `CONV_VALUE_ERROR` |
+| `TypeError` | `CONV_TYPE_ERROR` |
+| `KeyError` | `CONV_KEY_ERROR` |
+| `IndexError` | `CONV_INDEX_ERROR` |
+| `ZeroDivisionError` | `CONV_ZERO_DIVISION_ERROR` |
+| `OverflowError` | `CONV_OVERFLOW_ERROR` |
+| `ArithmeticError` | `CONV_ARITHMETIC_ERROR` |
+| `AssertionError` | `CONV_ASSERTION_ERROR` |
+| `RuntimeError` | `CONV_RUNTIME_ERROR` |
+| anything else | `CONV_OTHER` (carries the Python type name) |
 
 Rules:
 
@@ -219,43 +216,43 @@ Rules:
   `UnicodeDecodeError` maps to `ValueError`.
 - Verification compares the **variant name** first. The message is checked only
   when a test provides `message_pattern`.
-- A Rust **panic always fails**, even when Python raised an exception. Generated
-  Rust must return `Err(ConvError::...)`, never panic.
+- A C **crash always fails**, even when Python raised an exception. Generated C
+  must return a `ConvResult` error, never crash.
 - Timeout and crash outcomes always fail.
 
 ---
 
-## Fixed Rust harness
+## Fixed C harness
 
-The LLM only writes `src/user_code.rs`. The converter owns everything else:
+The LLM only writes `src/user_code.c`. The converter owns everything else:
 
 ```text
-Cargo.toml
-Cargo.lock
-src/main.rs           # reads cases.json, calls dispatch, catches panics, writes results.json
-src/harness.rs        # Case type plus arg/req_arg/opt_named_arg/ensure_kwargs/json helpers
-src/error_prelude.rs  # ConvError enum (injected from errors_map/rust_prelude.rs)
-src/user_code.rs      # LLM output
+Makefile
+src/main.c           # reads cases.json, calls dispatch, writes results.json
+src/harness.c        # JSON reader/writer plus arg/ensure_kwargs/value helpers
+src/harness.h        # Case, JsonValue, ConvResult, helper declarations
+src/error_prelude.h  # ConvErrorKind enum (injected from errors_map/c_prelude.h)
+src/user_code.h      # dispatch declaration
+src/user_code.c      # LLM output
 ```
 
 Required entry point:
 
-```rust
-pub fn dispatch(
-    case: &crate::harness::Case,
-) -> Result<serde_json::Value, crate::error_prelude::ConvError>
+```c
+ConvResult dispatch(const Case *test_case);
 ```
 
-The harness catches panics, so a panic is distinguishable from an `Err`. JSON is
-the wire format between Python and Rust:
+The harness catches nothing at the language level: a crash (non-zero exit or
+segfault) is reported as an error outcome, distinguishable from a returned
+`ConvResult` error. JSON is the wire format between Python and C. The case file
+is a JSON **array**:
 
 ```json
-{"test_id":"t1","function":"add","args":[1,2],"kwargs":{}}
+[{"test_id":"t1","function":"add","args":[1,2],"kwargs":{}}]
 ```
-
 Value outcomes serialize as `{"kind":"value","value":...}`; errors as
-`{"kind":"error","error_variant":"ValueError","message":"..."}`; panics as
-`{"kind":"panic"}`.
+`{"kind":"error","error_variant":"ValueError","message":"..."}`. A missing result
+or a crashed process is reported as `{"kind":"crash"}`.
 
 ---
 
@@ -268,7 +265,8 @@ Value outcomes serialize as `{"kind":"value","value":...}`; errors as
   `sorted`, `range`, `enumerate`, `zip`, common string/list/dict methods.
 - Explicit `raise`, integer arithmetic, floor division/modulo semantics,
   negative indexing, unicode strings.
-- No I/O, network, randomness, time, threads, external packages, or C extensions.
+- No I/O, network, randomness, time, threads, external packages, or native Python
+  extensions.
 - Values must be JSON-serializable; dict keys must be strings; non-finite floats
   are not supported.
 - Source limit: 500 lines (enforced in the API and nodes).
@@ -277,7 +275,7 @@ Value outcomes serialize as `{"kind":"value","value":...}`; errors as
 
 ## Security
 
-Every piece of Python and Rust is untrusted.
+Every piece of Python and C is untrusted.
 
 **Docker executor (default).** Each command runs in a fresh container with:
 
@@ -289,19 +287,20 @@ Every piece of Python and Rust is untrusted.
 - hard wall-clock timeout, then `docker rm -f` by unique container name
 - host uid/gid so the bind-mounted work directory is writable
 
-Cargo dependencies are fetched once at image build time (`Cargo.lock` included),
-then runtime builds run with `CARGO_NET_OFFLINE=true` into a writable copy of the
-image's cargo cache.
+The C harness is dependency-free (standard library + `-lm`), so generated code
+builds entirely offline against the toolchain baked into the image. The image is
+Alpine-based (~284 MB) and installs `gcc`, `musl-dev`, `make`, and `python3`;
+generated C targets standard C11 plus libm under musl.
 
 **Subprocess fallback.** Used only if Docker is unavailable and
 `SANDBOX_FALLBACK_TO_SUBPROCESS=true`. It applies CPU and file-size rlimits, a
 sanitized environment, a separate process group, and timeouts, but it has **no
 network namespace and no memory/PID cap**. Memory and PID isolation are
 Docker-only because `RLIMIT_NPROC` is per-user and `RLIMIT_AS` breaks
-LLVM/rustc. Do not use the fallback for adversarial input.
+compiler builds. Do not use the fallback for adversarial input.
 
-Secrets stay out of the sandbox: only `PATH`, locale, Rust toolchain variables,
-`HOME`, and explicit env vars are passed.
+Secrets stay out of the sandbox: only `PATH`, locale, compiler variables
+(`CC`, `CFLAGS`, `LDFLAGS`), `HOME`, and explicit env vars are passed.
 
 ---
 
@@ -321,14 +320,14 @@ All settings are environment variables (or `.env`). No keys are hard-coded.
 | `SANDBOX_IMAGE` | `converter-sandbox:latest` | sandbox image |
 | `SANDBOX_FALLBACK_TO_SUBPROCESS` | `true` | fallback when Docker is missing |
 | `TEST_TIMEOUT_S` | `5` | per Python test case |
-| `COMPILE_TIMEOUT_S` | `60` | cargo build |
-| `RUN_TIMEOUT_S` | `120` | Rust differential run |
+| `COMPILE_TIMEOUT_S` | `60` | C build (`make`) |
+| `RUN_TIMEOUT_S` | `120` | C differential run |
 | `MAX_SOURCE_LINES` | `500` | input limit |
 | `MAX_ATTEMPTS` | `3` | repair cap |
 | `MAX_GENERATION_ROUNDS` | `2` | regeneration cap |
 | `MLFLOW_ENABLED` | `true` | local tracing toggle |
 | `MLFLOW_TRACKING_URI` | `sqlite:///mlflow.db` | local trace store |
-| `MLFLOW_EXPERIMENT_NAME` | `python-to-rust` | experiment name |
+| `MLFLOW_EXPERIMENT_NAME` | `python-to-c` | experiment name |
 | `PROMPT_COST_PER_1K` / `COMPLETION_COST_PER_1K` | `0` | USD price table |
 | `STRICT_THRESHOLD` / `EDGE_CASE_THRESHOLD` | `1.0` / `0.95` | pass criteria |
 
@@ -346,7 +345,7 @@ the local MLflow UI:
 ```
 
 Defaults: `MLFLOW_ENABLED=true`, `MLFLOW_TRACKING_URI=sqlite:///mlflow.db`,
-`MLFLOW_EXPERIMENT_NAME=python-to-rust`. SQLite keeps everything in one local
+`MLFLOW_EXPERIMENT_NAME=python-to-c`. SQLite keeps everything in one local
 file; MLflow 3.x no longer accepts the legacy file-store backend by default.
 Every graph node gets a span with the
 run id, attempt/generation-round metadata, and a compact output summary. If
@@ -368,7 +367,7 @@ curl -s http://localhost:8000/convert \
 ```
 
 Response contains `run_id`, `status` (`passed` / `failed` / `error`), the final
-`rust_code`, and the full `report`:
+`c_code`, and the full `report`:
 
 - per-category pass rates
 - source breakdown (user vs generated)
@@ -388,9 +387,9 @@ Response contains `run_id`, `status` (`passed` / `failed` / `error`), the final
 ## Frontend
 
 `frontend/` is a Vite + React + TypeScript app with a VS Code-style workspace:
-an explorer for `main.py` / `tests.py`, Monaco editor tabs (Python syntax
-highlighting), a bottom Output/Report panel, and the generated Rust opened as a
-read-only `user_code.rs` tab.
+an explorer for `main.py` / `tests.py`, Monaco editor tabs (Python and C syntax
+highlighting), a bottom Output/Report panel, and the generated C opened as a
+read-only `user_code.c` tab.
 
 ```bash
 cd frontend
@@ -431,7 +430,7 @@ The unit tests do not call an LLM or Docker. They cover:
 
 - both routing branches and both loop caps
 - error mapping, including MRO fallback and unknown exceptions
-- differential comparison (values, floats, dict order, bool/int, panic, message
+- differential comparison (values, floats, dict order, bool/int, crash, message
   patterns)
 - pytest AST ingestion (asserts, raises, match, approx, parametrize, unsupported
   shapes)
@@ -450,8 +449,8 @@ augment mode, the repair loop, and Docker execution.
   guessed at.
 - Coverage is heuristic (category/function presence), not line/branch coverage.
 - The API is synchronous; move long runs to a job queue for production.
-- Message-pattern checks depend on the Rust message text and are opt-in.
-- Large Python integers beyond `i64` must map to `OverflowError`; translation is
-  instructed to use checked arithmetic, but this is a common failure mode worth
-  testing.
+- Message-pattern checks depend on the C message text and are opt-in.
+- Large Python integers beyond `long long` must map to `OverflowError`;
+  translation is instructed to use checked arithmetic, but this is a common
+  failure mode worth testing.
 - The subprocess fallback is not a security boundary.

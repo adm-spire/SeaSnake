@@ -13,7 +13,7 @@ from ..testing.models import (
     NormalizedTest,
     PythonOutcome,
 )
-from ..verification.models import FailureCase, RustActual
+from ..verification.models import ActualOutcome, FailureCase
 from ..verification.scoring import CategoryScore, PassCriteria, ScoreSummary
 
 
@@ -47,7 +47,7 @@ class Report(BaseModel):
     compile_ok: bool | None = None
     pass_criteria_failures: list[str] = Field(default_factory=list)
     failed_tests: list[FailureCase] = Field(default_factory=list)
-    rust_code: str | None = None
+    c_code: str | None = None
     usage: Usage = Field(default_factory=Usage)
     diagnostics: list[Diagnostic] = Field(default_factory=list)
     last_error: str | None = None
@@ -75,13 +75,13 @@ class ConverterState(BaseModel):
     baseline: list[BaselineCase] = Field(default_factory=list)
 
     # Translation / compilation.
-    rust_code: str | None = None
-    rust_workdir: str | None = None
+    c_code: str | None = None
+    workdir: str | None = None
     compile_ok: bool | None = None
     compile_diagnostics: str = ""
 
     # Verification.
-    rust_results: dict[str, RustActual] = Field(default_factory=dict)
+    translated_results: dict[str, ActualOutcome] = Field(default_factory=dict)
     failures: list[FailureCase] = Field(default_factory=list)
     score: ScoreSummary | None = None
     pass_failures: list[str] = Field(default_factory=list)

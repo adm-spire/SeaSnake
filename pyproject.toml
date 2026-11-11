@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "agentic-py2rust"
 version = "0.1.0"
-description = "Agentic Python-to-Rust converter with a verified differential test baseline"
+description = "Agentic Python-to-C converter with a verified differential test baseline"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
@@ -43,11 +43,11 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "converter.sandbox" = [
-    "rust_harness/Cargo.toml",
-    "rust_harness/Cargo.lock",
-    "rust_harness/src/*.rs",
+    "c_harness/Makefile",
+    "c_harness/src/*.c",
+    "c_harness/src/*.h",
 ]
-"converter.errors_map" = ["*.rs"]
+"converter.errors_map" = ["*.h"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

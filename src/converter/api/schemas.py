@@ -30,5 +30,5 @@ class ConvertRequest(BaseModel):
 class ConvertResponse(BaseModel):
     run_id: str
     status: str
-    rust_code: str | None = None
+    c_code: str | None = None
     report: Report | None = None

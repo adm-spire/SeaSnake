@@ -250,7 +250,7 @@ def _build_messages(
     gap_text = "\n".join(f"- {gap}" for gap in gaps) or "- none"
     existing = _summarize_existing(existing_tests)
 
-    system = """You write differential test cases for a Python-to-Rust converter.
+    system = """You write differential test cases for a Python-to-C converter.
 Return JSON only, with this exact shape:
 
 {

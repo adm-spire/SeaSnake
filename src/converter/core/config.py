@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     # no account or hosted service is required.
     mlflow_enabled: bool = True
     mlflow_tracking_uri: str = "sqlite:///mlflow.db"
-    mlflow_experiment_name: str = "python-to-rust"
+    mlflow_experiment_name: str = "python-to-c"
 
     # Sandbox.
     sandbox_mode: Literal["docker", "subprocess"] = "docker"
