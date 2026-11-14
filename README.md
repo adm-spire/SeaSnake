@@ -46,6 +46,8 @@ The Docker image installs both during `docker build`.
 ## Architecture
 
 Python packages live under `src/converter/`; the UI lives in `frontend/`.
+For Mermaid diagrams of the request flow, graph loops, deep agent, and sandbox
+internals, see [`docs/code-flow.md`](docs/code-flow.md).
 
 ```text
 api/            FastAPI submit endpoint
